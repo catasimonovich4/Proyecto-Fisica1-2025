@@ -6,7 +6,7 @@ from scipy.signal import find_peaks
 print(cv2.__version__)
 
 # Abrir el video
-cap = cv2.VideoCapture(r"./Videos/clemen-solo.mp4")
+cap = cv2.VideoCapture(r"./Videos/clemen-normal.mp4")
 
 # Leer el primer frame
 ret, frame = cap.read()
