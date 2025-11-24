@@ -6,7 +6,7 @@ from scipy.signal import find_peaks
 print(cv2.__version__)
 
 # Abrir el video
-cap = cv2.VideoCapture(r"./Videos/clemen-corto.mp4")
+cap = cv2.VideoCapture(r"./Videos/clemen-tieso.mp4")
 
 # Obtener FPS del video
 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -16,7 +16,7 @@ print(f"FPS del video: {fps}")
 # Masa (kg) de la "carga" 
 # Si esta la hamaca sola 2kg
 # Si esta clemente 72kg
-m = 72.0
+m = 2.0
 # Aceleración gravitatoria (m/s^2)
 g = 9.81
 
@@ -339,6 +339,47 @@ if len(positions) > 1:
 
     # Layout automático con separación adecuada entre filas/columnas
     plt.show()
+
+    # ================== ANÁLISIS DE ENERGÍA ==================
+    # Energía cinética: Ek = (1/2) * m * v^2
+    E_cinetica = 0.5 * m * v_magnitude**2
+    
+    # Energía potencial gravitatoria: Ep = m * g * h
+    # h es la altura respecto al punto más bajo de la trayectoria
+    # Reconstruir posiciones Y desde ángulos para consistencia
+    y_positions = r_m * (-np.cos(theta_p_unwrapped))  # Coordenadas Y físicas
+    h = y_positions - np.min(y_positions)  # Altura respecto al mínimo
+    E_potencial = m * g * h
+    
+    # Alinear tamaños: E_cinetica tiene 1 elemento menos por el diff en velocidades
+    E_potencial_aligned = E_potencial[1:]  # Descartar primer elemento para alinear
+    time_energia = time_vel  # Usar time_vel para energías alineadas
+    
+    # Energía mecánica total
+    E_mecanica = E_cinetica + E_potencial_aligned
+    
+    # Crear figura para energías
+    plt.figure(figsize=(10, 6), constrained_layout=True)
+    
+    plt.plot(time_energia, E_cinetica, 'r-', label='Energía Cinética', linewidth=1.5)
+    plt.plot(time_energia, E_potencial_aligned, 'b-', label='Energía Potencial', linewidth=1.5)
+    plt.plot(time_energia, E_mecanica, 'k-', label='Energía Mecánica Total', linewidth=2)
+    plt.xlabel('Tiempo (s)')
+    plt.ylabel('Energía (J)')
+    plt.title('Energías vs Tiempo')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    plt.show()
+    
+    # Estadísticas de energía
+    print(f"\n=== ANÁLISIS DE ENERGÍA ===")
+    print(f"Energía mecánica inicial: {E_mecanica[0]:.2f} J")
+    print(f"Energía mecánica final: {E_mecanica[-1]:.2f} J")
+    print(f"Energía disipada: {E_mecanica[0] - E_mecanica[-1]:.2f} J")
+    print(f"Porcentaje de energía disipada: {100 * (E_mecanica[0] - E_mecanica[-1]) / E_mecanica[0]:.1f}%")
+    print(f"Energía cinética máxima: {np.max(E_cinetica):.2f} J")
+    print(f"Energía potencial máxima: {np.max(E_potencial):.2f} J")
 
     # ================== DIAGRAMA DE CUERPO LIBRE ==================
     idx_max_v = np.argmax(np.abs(omega))
