@@ -16,7 +16,7 @@ print(f"FPS del video: {fps}")
 # Masa (kg) de la "carga" 
 # Si esta la hamaca sola 2kg
 # Si esta clemente 72kg
-m = 2.0
+m = 72.0
 # Aceleración gravitatoria (m/s^2)
 g = 9.81
 
