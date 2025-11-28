@@ -6,7 +6,7 @@ from scipy.signal import find_peaks
 print(cv2.__version__)
 
 # Abrir el video
-cap = cv2.VideoCapture(r"./Videos/clemen-tieso.mp4")
+cap = cv2.VideoCapture(r"./Videos/clemen-normal.mp4")
 
 # Obtener FPS del video
 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -258,7 +258,7 @@ if len(positions) > 1:
     plt.grid(True)
     
     plt.subplot(3, 2, 3)
-    plt.plot(time_pos, r_m, 'purple', label='Radio r')
+    plt.plot(time_pos, r_m, 'orange', label='Radio r')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Radio (m)')
     plt.title('Radio vs Tiempo (Coordenadas Polares)')
@@ -266,7 +266,7 @@ if len(positions) > 1:
     plt.grid(True)
     
     plt.subplot(3, 2, 4)
-    plt.plot(time_pos, np.degrees(theta_p_unwrapped), 'orange', label='Ángulo θ')
+    plt.plot(time_pos, np.degrees(theta_p_unwrapped), 'purple', label='Ángulo θ')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Ángulo (grados)')
     plt.title('Ángulo vs Tiempo (Coordenadas Polares)')
