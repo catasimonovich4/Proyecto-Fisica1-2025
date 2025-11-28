@@ -31,19 +31,19 @@ if not ret:
     exit()
 
 # Seleccionar el objeto (hamaca) con el mouse
-bbox = cv2.selectROI("Selecciona la hamaca", frame, False)
-cv2.destroyWindow("Selecciona la hamaca")  # Cerrar ventana de selección
+bbox = cv2.selectROI("Seleccione la hamaca", frame, False)
+cv2.destroyWindow("Seleccione la hamaca")  # Cerrar ventana de selección
 
 # Seleccionar el punto de suspensión de la hamaca
-print("\nAhora selecciona el punto de suspensión de la hamaca (donde está colgada)")
-origin_roi = cv2.selectROI("Selecciona punto de suspensión", frame, False)
-cv2.destroyWindow("Selecciona punto de suspensión")
+print("\nAhora seleccione el punto de suspensión de la hamaca (donde está colgada)")
+origin_roi = cv2.selectROI("Seleccione punto de suspension", frame, False)
+cv2.destroyWindow("Seleccione punto de suspension")
 
 # Calcular el origen real (punto de suspensión)
 x_origin = origin_roi[0] + origin_roi[2] / 2
 y_origin = origin_roi[1] + origin_roi[3] / 2
 
-print(f"Punto de suspensión seleccionado: ({x_origin:.1f}, {y_origin:.1f})")
+print(f"Punto de suspension seleccionado: ({x_origin:.1f}, {y_origin:.1f})")
 
 # Crear el tracker CSRT
 tracker = cv2.TrackerCSRT_create()
