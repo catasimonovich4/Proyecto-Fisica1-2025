@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+from error_propagation import ErrorAnalysis  # Importar módulo de errores
 
 print(cv2.__version__)
 
@@ -175,6 +176,25 @@ if len(positions) > 1:
     x_origin_m = x_origin_final * meters_per_pixel
     y_origin_m = y_origin_final * meters_per_pixel
 
+    # ================== ANÁLISIS DE ERRORES ==================
+    # Inicializar el análisis de errores con los parámetros del experimento
+    error_analysis = ErrorAnalysis(fps=fps, m=m, g=g)
+    
+    # Calcular el factor de conversión y su incertidumbre
+    radio_promedio_pixels_std = np.std(r)  # Variabilidad del tracking
+    meters_per_pixel, meters_per_pixel_error = error_analysis.calibrate_scale(
+        radio_promedio_pixels=radio_promedio_pixels,
+        radio_promedio_pixels_std=radio_promedio_pixels_std,
+        radio_real_m=radio_real
+    )
+    
+    print(f"\n=== ANÁLISIS DE CALIBRACIÓN ===")
+    print(f"Radio promedio: {radio_promedio_pixels:.1f} ± {radio_promedio_pixels_std:.1f} píxeles")
+    print(f"Factor de conversión: {error_analysis.format_value_with_error(meters_per_pixel, meters_per_pixel_error)} m/píxel")
+    
+    # Calcular errores en posiciones
+    x_pos_error_m, y_pos_error_m = error_analysis.position_error(x_pos_m, y_pos_m)
+    
     # Tiempos
     time_pos = np.arange(len(x_pos)) * time_per_frame
     time_vel = np.arange(1, len(x_pos)) * time_per_frame
@@ -187,6 +207,12 @@ if len(positions) > 1:
     vy = smooth_data(vy_raw, window_size=5)
     vx_ms = vx * meters_per_pixel / time_per_frame
     vy_ms = vy * meters_per_pixel / time_per_frame
+    
+    # Calcular errores en velocidades
+    # Alinear tamaños de arrays para error de velocidades
+    x_pos_error_aligned = x_pos_error_m[:-1]  # Descartar último elemento
+    y_pos_error_aligned = y_pos_error_m[:-1]
+    vx_error_ms, vy_error_ms = error_analysis.velocity_error(vx_ms, vy_ms, x_pos_error_aligned, y_pos_error_aligned)
 
     # Aceleraciones cartesianas (m/s²)
     ax_raw = np.diff(vx)
@@ -204,9 +230,23 @@ if len(positions) > 1:
     vr_ms = vr * meters_per_pixel / time_per_frame
     omega = vtheta / time_per_frame  # rad/s
     theta_mid = theta_p_unwrapped[1:]  # alineado con omega
+    
+    # Calcular errores en ángulos y velocidad angular
+    x_rel_m = x_pos_m - x_origin_m
+    y_rel_m = y_pos_m - y_origin_m
+    theta_error = error_analysis.angle_error(x_rel_m, y_rel_m, x_pos_error_m, y_pos_error_m)
+    
+    # Error en velocidad angular
+    # angular_velocity_error devuelve n-1 elementos (igual que omega)
+    omega_error = error_analysis.angular_velocity_error(theta_p_unwrapped, theta_error)
+    
+    # Alinear theta_error con theta_mid (que es theta_p_unwrapped[1:])
+    # theta_error tiene n elementos, pero solo necesitamos los errores de theta_mid
+    theta_error_mid = theta_error[1:]  # Los errores de theta[1:] en adelante
 
     # ================== FUERZAS (DINÁMICA) ==================
     L = np.mean(r_m)
+    L_error = np.std(r_m)  # Error en el radio = variabilidad medida
     
     # DEBUG: Verificar valores de theta y componentes
     print(f"\n=== DEBUG ÁNGULOS ===")
@@ -219,13 +259,27 @@ if len(positions) > 1:
     tension = np.maximum(tension, 0.0)
     peso = m * g
     
+    # Calcular error en tensión - asegurar que todos los arrays tengan el mismo tamaño
+    # tension, theta_mid, omega, theta_error_mid, omega_error deben tener el mismo tamaño
+    min_len = min(len(tension), len(theta_mid), len(omega), len(theta_error_mid), len(omega_error))
+    tension_error = error_analysis.tension_error(
+        theta_mid[:min_len], 
+        omega[:min_len], 
+        L, 
+        theta_error_mid[:min_len], 
+        omega_error[:min_len], 
+        L_error
+    )
+    
     print(f"\n=== DEBUG FUERZAS ===")
     print(f"Tensión mínima: {np.min(tension):.1f} N")
     print(f"Tensión máxima: {np.max(tension):.1f} N")
     print(f"Tensión promedio: {np.mean(tension):.1f} N")
+    print(f"Tensión promedio con error: {error_analysis.format_value_with_error(np.mean(tension), np.mean(tension_error))} N")
     print(f"Peso: {peso:.1f} N")
     print(f"Velocidad angular máxima: {np.max(np.abs(omega)):.3f} rad/s")
     print(f"Velocidad angular promedio: {np.mean(np.abs(omega)):.3f} rad/s")
+    print(f"Error en velocidad angular: ±{np.mean(omega_error):.3f} rad/s")
     
     # Ajustar tamaños de fuente para evitar solapamientos en pantallas pequeñas
     plt.rcParams.update({
@@ -241,44 +295,58 @@ if len(positions) > 1:
     
     plt.subplot(3, 2, 1)
     plt.plot(time_pos, x_pos_m, label='Posición X', color='b')
+    plt.fill_between(time_pos, x_pos_m - x_pos_error_m, x_pos_m + x_pos_error_m, alpha=0.2, color='b')
     plt.plot(time_pos, y_pos_m, label='Posición Y', color='g')
+    plt.fill_between(time_pos, y_pos_m - y_pos_error_m, y_pos_m + y_pos_error_m, alpha=0.2, color='g')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Posición (m)')
-    plt.title('Posición Cartesiana vs Tiempo')
+    plt.title('Posición Cartesiana vs Tiempo (con incertidumbre)')
     plt.legend()
     plt.grid(True)
 
     plt.subplot(3, 2, 2)
     plt.plot(time_vel, vx_ms, label='Velocidad en X', color='r')
+    plt.fill_between(time_vel, vx_ms - vx_error_ms, vx_ms + vx_error_ms, alpha=0.2, color='r')
     plt.plot(time_vel, vy_ms, label='Velocidad en Y', color='m')
+    plt.fill_between(time_vel, vy_ms - vy_error_ms, vy_ms + vy_error_ms, alpha=0.2, color='m')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Velocidad (m/s)')
-    plt.title('Velocidad Cartesiana vs Tiempo')
+    plt.title('Velocidad Cartesiana vs Tiempo (con incertidumbre)')
     plt.legend()
     plt.grid(True)
     
     plt.subplot(3, 2, 3)
+    plt.subplot(3, 2, 3)
     plt.plot(time_pos, r_m, 'orange', label='Radio r')
+    plt.fill_between(time_pos, r_m - np.full_like(r_m, L_error), r_m + np.full_like(r_m, L_error), alpha=0.2, color='orange')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Radio (m)')
-    plt.title('Radio vs Tiempo (Coordenadas Polares)')
+    plt.title('Radio vs Tiempo (Coordenadas Polares, con incertidumbre)')
     plt.legend()
     plt.grid(True)
     
     plt.subplot(3, 2, 4)
     plt.plot(time_pos, np.degrees(theta_p_unwrapped), 'purple', label='Ángulo θ')
+    plt.fill_between(time_pos, np.degrees(theta_p_unwrapped - theta_error), np.degrees(theta_p_unwrapped + theta_error), alpha=0.2, color='purple')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Ángulo (grados)')
-    plt.title('Ángulo vs Tiempo (Coordenadas Polares)')
+    plt.title('Ángulo vs Tiempo (Coordenadas Polares, con incertidumbre)')
     plt.legend()
     plt.grid(True)
     
     plt.subplot(3, 2, 5)
-    plt.plot(time_vel, omega, 'purple', label='Velocidad angular')
-    plt.plot(time_vel, vr_ms, 'orange', label='Velocidad radial')
+    # Alinear omega y vr_ms con los errores
+    omega_aligned = omega[:min_len]
+    omega_error_aligned = omega_error[:min_len]
+    vr_ms_aligned = vr_ms[:min_len]
+    time_vel_polar = time_vel[:min_len]
+    
+    plt.plot(time_vel_polar, omega_aligned, 'purple', label='Velocidad angular')
+    plt.fill_between(time_vel_polar, omega_aligned - omega_error_aligned, omega_aligned + omega_error_aligned, alpha=0.2, color='purple')
+    plt.plot(time_vel_polar, vr_ms_aligned, 'orange', label='Velocidad radial')
     plt.xlabel('Tiempo (s)')
     plt.ylabel('Velocidad angular (rad/s) / radial (m/s)')
-    plt.title('Velocidades Polares vs Tiempo')
+    plt.title('Velocidades Polares vs Tiempo (con incertidumbre)')
     plt.legend()
     plt.grid(True)
 
@@ -474,18 +542,37 @@ if len(positions) > 1:
     ax1.axis('equal'); ax1.legend(); ax1.grid(alpha=0.3)
 
     ax2 = plt.subplot(1,2,2)
-    ax2.plot(time_vel, tension, color='blue', label='Tensión (N)')
-    ax2.axhline(peso, color='green', linestyle='--', label='Peso (N)')
-    ax2.set_xlabel('Tiempo (s)'); ax2.set_ylabel('Fuerza (N)'); ax2.set_title('Fuerzas vs Tiempo')
+    # Alinear time_vel con tension para el gráfico
+    time_vel_aligned = time_vel[:min_len]
+    tension_aligned = tension[:min_len]
+    tension_error_aligned = tension_error[:min_len]
+    
+    ax2.plot(time_vel_aligned, tension_aligned, color='blue', label='Tensión (N)', linewidth=2)
+    ax2.fill_between(time_vel_aligned, tension_aligned - tension_error_aligned, tension_aligned + tension_error_aligned, alpha=0.2, color='blue', label='Incertidumbre')
+    ax2.axhline(peso, color='green', linestyle='--', label='Peso (N)', linewidth=2)
+    ax2.set_xlabel('Tiempo (s)'); ax2.set_ylabel('Fuerza (N)'); ax2.set_title('Fuerzas vs Tiempo (con incertidumbre)')
     ax2.legend(); ax2.grid(alpha=0.3)
     plt.show()
     
     # ================== RESUMEN DE DATOS ==================
-    print("\n=== RESUMEN DEL ANÁLISIS ===")
+    print("\n" + "="*80)
+    print("RESUMEN DEL ANÁLISIS CON PROPAGACIÓN DE ERRORES")
+    print("="*80)
     print(f"Número total de frames analizados: {len(positions)}")
     print(f"Duración total del análisis: {len(positions) * time_per_frame:.2f} segundos")
     print(f"Origen final utilizado: ({x_origin_final:.1f}, {y_origin_final:.1f}) px = ({x_origin_m:.3f}, {y_origin_m:.3f}) m")
-    print(f"Radio promedio: {np.mean(r_m):.3f} ± {np.std(r_m):.3f} metros")
+    
+    print(f"\n--- MAGNITUDES MEDIDAS CON INCERTIDUMBRES ---")
+    print(f"Radio promedio: {error_analysis.format_value_with_error(np.mean(r_m), np.std(r_m))} m")
+    print(f"Posición X promedio: {error_analysis.format_value_with_error(np.mean(x_pos_m), np.mean(x_pos_error_m))} m")
+    print(f"Posición Y promedio: {error_analysis.format_value_with_error(np.mean(y_pos_m), np.mean(y_pos_error_m))} m")
+    print(f"Velocidad X promedio: {error_analysis.format_value_with_error(np.mean(vx_ms), np.mean(vx_error_ms))} m/s")
+    print(f"Velocidad Y promedio: {error_analysis.format_value_with_error(np.mean(vy_ms), np.mean(vy_error_ms))} m/s")
+    print(f"Ángulo promedio: {error_analysis.format_value_with_error(np.mean(theta_p_unwrapped), np.mean(theta_error))} rad")
+    print(f"Velocidad angular promedio: {error_analysis.format_value_with_error(np.mean(omega), np.mean(omega_error))} rad/s")
+    print(f"Tensión promedio: {error_analysis.format_value_with_error(np.mean(tension), np.mean(tension_error))} N")
+    
+    print(f"\n--- ANÁLISIS ADICIONAL ---")
     print(f"Radio mínimo: {np.min(r_m):.3f} metros")
     print(f"Radio máximo: {np.max(r_m):.3f} metros")
     print(f"Variación del radio: {((np.max(r_m) - np.min(r_m)) / np.mean(r_m) * 100):.1f}%")
@@ -505,6 +592,8 @@ if len(positions) > 1:
         radius_finite_values = radius_curvature[np.isfinite(radius_curvature)]
         if len(radius_finite_values) > 0:
             print(f"Radio de curvatura promedio: {np.mean(radius_finite_values):.3f} metros")
+    
+    print("="*80 + "\n")
 
 else:
     print("No se detectaron suficientes posiciones para graficar.")
